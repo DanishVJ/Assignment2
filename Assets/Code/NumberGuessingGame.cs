@@ -1,179 +1,232 @@
 using UnityEngine;         // Provides access to Unity’s core classes (like MonoBehaviour, Vector3, Debug, etc.)
-using Commodore;           // Allows us to use CommodoreBehavior and other Commodore-specific classes
+using Commodore;           // Provides access to CommodoreBehavior and terminal functionality
+using System.IO;           // Required for file operations (save/load JSON)
 
-// NumberGuessingGame handles the number guessing game logic and connects to the Commodore terminal
+// ------------------- NumberGuessingGame -------------------
+// Handles the text-based number guessing game and connects to Commodore terminal
 public class NumberGuessingGame : CommodoreBehavior
 {
     private GameManager gameManager;  // Holds the main game logic manager
 
-    // Start() is called once when the script is first run
+    // Called once when the script is first run
     void Start()
     {
-        // Create a new GameManager instance, which handles all game rules
-        gameManager = new GameManager();
-
-        // Begin a new game immediately
-        gameManager.StartNewGame();
+        gameManager = new GameManager(); // Create a new GameManager instance
+        gameManager.StartNewGame();      // Start a new game immediately
     }
 
-    // Update() is called every frame
+    // Called every frame
     void Update()
     {
         // Optional: detect if the player presses the Enter key
-        // Useful if you want to trigger events per frame (not strictly needed for Commodore input)
         if (Input.GetKeyDown(KeyCode.Return))
         {
             Debug.Log("Enter key pressed! Could trigger additional actions here.");
         }
     }
 
-    // ProcessCommand() is called automatically by Commodore whenever the player types something
-    // Commodore expects this function to return a string, which it will display in the terminal
+    // Called automatically by Commodore whenever the player types a command
+    // Returns a string to display in the terminal
     protected override string ProcessCommand(string command)
     {
-        // Forward the input text to the GameManager and return its response
-        return gameManager.ProcessCommand(command);
+        return gameManager.ProcessCommand(command); // Forward input to GameManager
     }
 }
 
-// ----------------------------------- GameManager -----------------------------------
+// ------------------- GameManager -------------------
 // Handles game flow, commands, and manages a NumberGuessingSession
 public class GameManager
 {
-    private CommandProcessor commandProcessor;  // Interprets text commands typed by the player
-    private NumberGuessingSession session;      // Holds the current number guessing game session
+    // Enum to track the current state of the game
+    public enum GameState { MainMenu, Playing, GameOver }
 
-    // Constructor for GameManager
+    private GameState currentState;            // Current state of the game
+    private CommandProcessor commandProcessor; // Handles text commands
+    private NumberGuessingSession session;     // Holds the current guessing session
+
+    private int minNumber = 1;                 // Minimum number for guessing
+    private int maxNumber = 10;                // Maximum number for guessing
+    private string savePath;                    // File path for saving/loading
+
+    // Constructor initializes the GameManager
     public GameManager()
     {
-        // Create a CommandProcessor and pass this GameManager to it
-        commandProcessor = new CommandProcessor(this);
+        currentState = GameState.MainMenu;              // Start at MainMenu
+        commandProcessor = new CommandProcessor(this);  // Create a CommandProcessor and pass reference to this GameManager
+        savePath = Application.persistentDataPath + "/savegame.json"; // Path for save/load file
     }
 
-    // Start a new guessing game
+    // Starts a new game session
     public void StartNewGame()
     {
-        // Create a new NumberGuessingSession with numbers from 1 to 10
-        session = new NumberGuessingSession(1, 10);
+        session = new NumberGuessingSession(minNumber, maxNumber); // Create a new session
+        currentState = GameState.Playing;                           // Set state to Playing
     }
 
-    // HandleGuess() checks a player's numeric guess against the target number
+    // Ends the current game session
+    public void EndGame()
+    {
+        currentState = GameState.GameOver; // Change state to GameOver
+    }
+
+    // Returns the current state
+    public GameState GetCurrentState() => currentState;
+
+    // Handles numeric guesses
     public string HandleGuess(int guess)
     {
-        // If no session exists, instruct the player to restart
-        if (session == null)
-            return "No game in progress! Type 'restart' to start a new game.";
+        // Ensure the game is in Playing state
+        if (currentState != GameState.Playing)
+            return "You must start a game first! Type 'start' to begin.";
 
-        // Check the guess against the session
-        int result = session.CheckGuess(guess);
+        int result = session.CheckGuess(guess); // Check the guess
 
-        if (result == 0)
+        if (result == 0) // Correct guess
         {
-            // Player guessed correctly
-            int target = session.GetTargetNumber();  // Get the target number
-            StartNewGame();                           // Start a new game automatically
-            return $"🎉 Correct! The number was {target}. Starting a new game...";
+            int target = session.GetTargetNumber(); // Get the correct number
+            EndGame();                               // End the game
+            return $"🎉 Correct! The number was {target}. Game over!";
         }
-        else if (result < 0)
+        else if (result < 0) // Guess too low
         {
-            // Guess was too low
             return "Too low! Try again.";
         }
-        else
+        else // Guess too high
         {
-            // Guess was too high
             return "Too high! Try again.";
         }
     }
 
-    // ProcessCommand() forwards text input from Commodore to the CommandProcessor
+    // -------------------- Save Game --------------------
+    public string SaveGame()
+    {
+        if (session == null) // No session to save
+            return "No game to save.";
+
+        string json = JsonUtility.ToJson(session); // Convert session to JSON string
+        File.WriteAllText(savePath, json);         // Write JSON to file
+        return $"Game saved to {savePath}";       // Confirm save
+    }
+
+    // -------------------- Load Game --------------------
+    public string LoadGame()
+    {
+        if (!File.Exists(savePath)) // Check if save file exists
+            return "No saved game found.";
+
+        string json = File.ReadAllText(savePath);                     // Read JSON string from file
+        session = JsonUtility.FromJson<NumberGuessingSession>(json);  // Convert JSON back to object
+        currentState = GameState.Playing;                             // Set state to Playing
+        return $"Game loaded! Guess a number between {session.GetMin()} and {session.GetMax()}.";
+    }
+
+    // Process player input through the CommandProcessor
     public string ProcessCommand(string input)
     {
-        return commandProcessor.Process(input);
+        return commandProcessor.Process(input); // Forward input
     }
 }
 
-// ----------------------------------- CommandProcessor -----------------------------------
-// Interprets player text commands and calls appropriate GameManager functions
+// ------------------- CommandProcessor -------------------
+// Interprets player commands and calls appropriate GameManager functions
 public class CommandProcessor
 {
-    private GameManager gameManager;  // Reference to GameManager to call game logic
+    private GameManager gameManager; // Reference to GameManager
 
-    // Constructor receives a GameManager reference
+    // Constructor receives GameManager reference
     public CommandProcessor(GameManager manager)
     {
         gameManager = manager;
     }
 
-    // Process() handles the text command typed by the player
+    // Process text commands
     public string Process(string command)
     {
-        // Split command into parts (words) to parse arguments
-        string[] parts = command.ToLower().Split(' ');
+        string[] parts = command.ToLower().Trim().Split(' '); // Split command into words
 
-        // If no command typed, prompt the player
+        // If no command entered
         if (parts.Length == 0 || string.IsNullOrEmpty(parts[0]))
-            return "Please type a command.";
+            return "Please type a command. Type 'help' for a list of commands.";
 
-        string mainCommand = parts[0];  // The first word determines the command type
+        string mainCommand = parts[0]; // The first word is the main command
 
         switch (mainCommand)
         {
-            case "guess":
-                // Ensure player typed a number after "guess"
-                if (parts.Length < 2)
+            case "start": // Start a new game
+                gameManager.StartNewGame();
+                return $"Game started! Guess a number between 1 and 10.";
+
+            case "guess": // Make a guess
+                if (gameManager.GetCurrentState() != GameManager.GameState.Playing)
+                    return "You must start a game first! Type 'start' to begin.";
+
+                if (parts.Length < 2) // No number entered
                     return "Usage: guess <number>";
 
-                // Convert the second word to an integer
-                if (int.TryParse(parts[1], out int guess))
-                    return gameManager.HandleGuess(guess);  // Forward to GameManager and return response
+                if (int.TryParse(parts[1], out int guess)) // Try to parse number
+                    return gameManager.HandleGuess(guess); // Forward to GameManager
 
-                // If parsing fails, tell the player
-                return "Please enter a valid number.";
+                return "Please enter a valid number."; // Invalid input
 
-            case "restart":
-                // Restart the game
+            case "restart": // Restart the game
                 gameManager.StartNewGame();
-                return "New game started! Try guessing again.";
+                return "Game restarted! Guess a number between 1 and 10.";
 
-            default:
-                // Unknown command
-                return "I don't understand that command. Try 'guess <number>' or 'restart'.";
+            case "quit": // End the game
+                gameManager.EndGame();
+                return "Game ended. Type 'start' to play again.";
+
+            case "help": // Show command list
+                return "Commands:\n" +
+                       "start - Begin a new game\n" +
+                       "guess <number> - Make a guess\n" +
+                       "restart - Restart the game\n" +
+                       "quit - End the game\n" +
+                       "save - Save current game progress\n" +
+                       "load - Load saved game\n" +
+                       "help - Show this list";
+
+            case "save": // Save game
+                return gameManager.SaveGame();
+
+            case "load": // Load game
+                return gameManager.LoadGame();
+
+            default: // Unknown command
+                return "I don't understand that command. Type 'help' for a list of commands.";
         }
     }
 }
 
-// ----------------------------------- NumberGuessingSession -----------------------------------
-// Manages a single game session, including the target number
+// ------------------- NumberGuessingSession -------------------
+// Stores a single game session and target number
+[System.Serializable] // Allows JSON serialization
 public class NumberGuessingSession
 {
-    private int targetNumber;  // The secret number the player must guess
-    private int min;           // Minimum value
-    private int max;           // Maximum value
+    private int targetNumber; // Secret number to guess
+    private int min;          // Minimum number
+    private int max;          // Maximum number
 
-    // Constructor sets the target number randomly between min and max
+    // Constructor sets target number randomly between min and max
     public NumberGuessingSession(int min, int max)
     {
         this.min = min;
         this.max = max;
-        targetNumber = UnityEngine.Random.Range(min, max + 1); // Random.Range is inclusive min, exclusive max+1
+        targetNumber = UnityEngine.Random.Range(min, max + 1);
     }
 
-    // CheckGuess() compares the guess with the target number
-    // Returns 0 if correct, -1 if too low, 1 if too high
+    // Check a guess: 0 = correct, -1 = too low, 1 = too high
     public int CheckGuess(int guess)
     {
-        if (guess == targetNumber)
-            return 0;   // correct
-        else if (guess < targetNumber)
-            return -1;  // too low
-        else
-            return 1;   // too high
+        if (guess == targetNumber) return 0;
+        else if (guess < targetNumber) return -1;
+        else return 1;
     }
 
-    // GetTargetNumber() exposes the target number
-    public int GetTargetNumber()
-    {
-        return targetNumber;
-    }
+    // Expose the target number
+    public int GetTargetNumber() => targetNumber;
+
+    // Expose min and max for save/load
+    public int GetMin() => min;
+    public int GetMax() => max;
 }

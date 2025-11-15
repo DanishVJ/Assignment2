@@ -392,7 +392,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 446059785}
-  - component: {fileID: 446059784}
+  - component: {fileID: 446059786}
   m_Layer: 0
   m_Name: '[CommodoreProcessor]'
   m_TagString: Untagged
@@ -400,18 +400,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &446059784
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 446059783}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3b1cb5f7f614bbc4c978b4b0abfcfcb8, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!4 &446059785
 Transform:
   m_ObjectHideFlags: 0
@@ -427,6 +415,18 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &446059786
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446059783}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2f310c73ed91e5348b3f24b972065c1c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::NumberGuessingGame
 --- !u!1 &784596172 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 237276021070281025, guid: c4fbf7e0a4d689b42aed0cf0dfd0187b, type: 3}
