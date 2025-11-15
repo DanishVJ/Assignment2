@@ -1,6 +1,7 @@
-using UnityEngine;         // Provides access to Unity’s core classes (like MonoBehaviour, Vector3, Debug, etc.)
-using Commodore;           // Provides access to CommodoreBehavior and terminal functionality
-using System.IO;           // Required for file operations (save/load JSON)
+using UnityEngine;         // Provides access to Unity classes like MonoBehaviour, Vector3, Debug, etc.
+using Commodore;           // Provides CommodoreBehavior for terminal input/output
+using System.IO;           // Required for reading/writing files (save/load)
+using System;              // Provides Exception handling classes
 
 // ------------------- NumberGuessingGame -------------------
 // Handles the text-based number guessing game and connects to Commodore terminal
@@ -21,7 +22,7 @@ public class NumberGuessingGame : CommodoreBehavior
         // Optional: detect if the player presses the Enter key
         if (Input.GetKeyDown(KeyCode.Return))
         {
-            Debug.Log("Enter key pressed! Could trigger additional actions here.");
+            Debug.Log("Enter key pressed."); // Log Enter key for debugging
         }
     }
 
@@ -29,7 +30,14 @@ public class NumberGuessingGame : CommodoreBehavior
     // Returns a string to display in the terminal
     protected override string ProcessCommand(string command)
     {
-        return gameManager.ProcessCommand(command); // Forward input to GameManager
+        try
+        {
+            return gameManager.ProcessCommand(command); // Forward input to GameManager
+        }
+        catch (Exception)
+        {
+            return "An unexpected error occurred. Try again."; // Catch any unexpected errors
+        }
     }
 }
 
@@ -52,14 +60,14 @@ public class GameManager
     public GameManager()
     {
         currentState = GameState.MainMenu;              // Start at MainMenu
-        commandProcessor = new CommandProcessor(this);  // Create a CommandProcessor and pass reference to this GameManager
-        savePath = Application.persistentDataPath + "/savegame.json"; // Path for save/load file
+        commandProcessor = new CommandProcessor(this);  // Create a CommandProcessor
+        savePath = Application.persistentDataPath + "/savegame.json"; // Save file path
     }
 
     // Starts a new game session
     public void StartNewGame()
     {
-        session = new NumberGuessingSession(minNumber, maxNumber); // Create a new session
+        session = new NumberGuessingSession(minNumber, maxNumber); // Create new session with min/max
         currentState = GameState.Playing;                           // Set state to Playing
     }
 
@@ -77,53 +85,76 @@ public class GameManager
     {
         // Ensure the game is in Playing state
         if (currentState != GameState.Playing)
-            return "You must start a game first! Type 'start' to begin.";
+            return "You must start a game first. Type 'start'.";
 
-        int result = session.CheckGuess(guess); // Check the guess
+        try
+        {
+            int result = session.CheckGuess(guess); // Check the guess against the session
 
-        if (result == 0) // Correct guess
-        {
-            int target = session.GetTargetNumber(); // Get the correct number
-            EndGame();                               // End the game
-            return $"🎉 Correct! The number was {target}. Game over!";
+            if (result == 0) // Correct guess
+            {
+                int target = session.GetTargetNumber(); // Get the correct number
+                EndGame();                               // End the game
+                return "Correct! The number was " + target + ". Game over.";
+            }
+            else if (result < 0) return "Too low! Try again.";  // Guess too low
+            else return "Too high! Try again.";                 // Guess too high
         }
-        else if (result < 0) // Guess too low
+        catch (Exception)
         {
-            return "Too low! Try again.";
-        }
-        else // Guess too high
-        {
-            return "Too high! Try again.";
+            return "An error occurred while processing your guess."; // Catch unexpected errors
         }
     }
 
-    // -------------------- Save Game --------------------
+    // ---------------- Save Game ----------------
     public string SaveGame()
     {
-        if (session == null) // No session to save
-            return "No game to save.";
+        // Check if a session exists
+        if (session == null)
+            return "No game to save. Start a game first.";
 
-        string json = JsonUtility.ToJson(session); // Convert session to JSON string
-        File.WriteAllText(savePath, json);         // Write JSON to file
-        return $"Game saved to {savePath}";       // Confirm save
+        try
+        {
+            string json = JsonUtility.ToJson(session); // Convert session to JSON string
+            File.WriteAllText(savePath, json);         // Write JSON to file
+            return "Game saved successfully.";
+        }
+        catch (Exception)
+        {
+            return "An error occurred while saving the game."; // Catch file errors
+        }
     }
 
-    // -------------------- Load Game --------------------
+    // ---------------- Load Game ----------------
     public string LoadGame()
     {
-        if (!File.Exists(savePath)) // Check if save file exists
-            return "No saved game found.";
+        try
+        {
+            if (!File.Exists(savePath)) // Check if save file exists
+                return "No saved game found.";
 
-        string json = File.ReadAllText(savePath);                     // Read JSON string from file
-        session = JsonUtility.FromJson<NumberGuessingSession>(json);  // Convert JSON back to object
-        currentState = GameState.Playing;                             // Set state to Playing
-        return $"Game loaded! Guess a number between {session.GetMin()} and {session.GetMax()}.";
+            string json = File.ReadAllText(savePath);                     // Read JSON from file
+            var loadedSession = JsonUtility.FromJson<NumberGuessingSession>(json); // Deserialize JSON
+
+            // Validate loaded data
+            if (loadedSession.GetMin() <= 0 || loadedSession.GetMax() <= 0)
+                return "Save file is corrupted or invalid.";
+
+            session = loadedSession;                 // Set session
+            currentState = GameState.Playing;        // Set state to Playing
+
+            return $"Game loaded! Guess a number between {session.GetMin()} and {session.GetMax()}.";
+        }
+        catch (Exception)
+        {
+            return "An error occurred while loading the game."; // Catch file errors
+        }
     }
 
     // Process player input through the CommandProcessor
     public string ProcessCommand(string input)
     {
-        return commandProcessor.Process(input); // Forward input
+        return commandProcessor.Process(input);
     }
 }
 
@@ -144,11 +175,10 @@ public class CommandProcessor
     {
         string[] parts = command.ToLower().Trim().Split(' '); // Split command into words
 
-        // If no command entered
         if (parts.Length == 0 || string.IsNullOrEmpty(parts[0]))
-            return "Please type a command. Type 'help' for a list of commands.";
+            return "Please type a command. Type 'help'."; // No command entered
 
-        string mainCommand = parts[0]; // The first word is the main command
+        string mainCommand = parts[0]; // First word determines the command
 
         switch (mainCommand)
         {
@@ -158,15 +188,21 @@ public class CommandProcessor
 
             case "guess": // Make a guess
                 if (gameManager.GetCurrentState() != GameManager.GameState.Playing)
-                    return "You must start a game first! Type 'start' to begin.";
+                    return "You must start a game first. Type 'start'.";
 
-                if (parts.Length < 2) // No number entered
-                    return "Usage: guess <number>";
+                if (parts.Length < 2) return "Usage: guess <number>";
 
-                if (int.TryParse(parts[1], out int guess)) // Try to parse number
-                    return gameManager.HandleGuess(guess); // Forward to GameManager
-
-                return "Please enter a valid number."; // Invalid input
+                try
+                {
+                    if (int.TryParse(parts[1], out int guess)) // Try parse number
+                        return gameManager.HandleGuess(guess); // Forward to GameManager
+                    else
+                        return "Please enter a valid number."; // Invalid input
+                }
+                catch (Exception)
+                {
+                    return "An error occurred while processing your guess."; // Catch unexpected errors
+                }
 
             case "restart": // Restart the game
                 gameManager.StartNewGame();
@@ -177,14 +213,7 @@ public class CommandProcessor
                 return "Game ended. Type 'start' to play again.";
 
             case "help": // Show command list
-                return "Commands:\n" +
-                       "start - Begin a new game\n" +
-                       "guess <number> - Make a guess\n" +
-                       "restart - Restart the game\n" +
-                       "quit - End the game\n" +
-                       "save - Save current game progress\n" +
-                       "load - Load saved game\n" +
-                       "help - Show this list";
+                return "Commands:\nstart\nguess <number>\nrestart\nquit\nsave\nload\nhelp";
 
             case "save": // Save game
                 return gameManager.SaveGame();
@@ -193,7 +222,7 @@ public class CommandProcessor
                 return gameManager.LoadGame();
 
             default: // Unknown command
-                return "I don't understand that command. Type 'help' for a list of commands.";
+                return "Unknown command. Type 'help'.";
         }
     }
 }
@@ -212,7 +241,7 @@ public class NumberGuessingSession
     {
         this.min = min;
         this.max = max;
-        targetNumber = UnityEngine.Random.Range(min, max + 1);
+        targetNumber = UnityEngine.Random.Range(min, max + 1); // Random.Range is inclusive min, exclusive max+1
     }
 
     // Check a guess: 0 = correct, -1 = too low, 1 = too high
@@ -223,10 +252,8 @@ public class NumberGuessingSession
         else return 1;
     }
 
-    // Expose the target number
+    // Getters to expose private variables safely
     public int GetTargetNumber() => targetNumber;
-
-    // Expose min and max for save/load
     public int GetMin() => min;
     public int GetMax() => max;
 }
